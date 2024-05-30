@@ -1,0 +1,51 @@
+import numpy as np
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from sklearn.feature_extraction.text import TfidfVectorizer
+from gensim.models import Word2Vec
+from sklearn.ensemble import StackingClassifier
+from sklearn.svm import SVC
+from sklearn.naive_bayes import MultinomialNB
+from sklearn.neural_network import MLPClassifier
+from sklearn.metrics import accuracy_score, precision_score, f1_score
+# Load social media data into a pandas DataFrame (assuming CSV file format)
+data = pd.read_csv('social_media_data.csv')
+# Preprocessing
+X = data['text']
+y = data['sentiment'] # Sentiment labels (e.g., positive, negative)
+# Split data into training and testing sets
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2,
+random_state=42)
+# Vectorize text data using TF-IDF
+tfidf_vectorizer = TfidfVectorizer(max_features=1000)
+X_train_tfidf = tfidf_vectorizer.fit_transform(X_train)
+X_test_tfidf = tfidf_vectorizer.transform(X_test)
+# Initialize Word2Vec model and vectorize text data
+word2vec_model = Word2Vec(sentences=X_train, vector_size=100, window=5,
+min_count=1, workers=4)
+X_train_word2vec = np.array([np.mean([word2vec_model.wv[word] for word in
+sentence.split() if word in word2vec_model.wv] or [np.zeros(100)], axis=0) for
+sentence in X_train])
+X_test_word2vec = np.array([np.mean([word2vec_model.wv[word] for word in
+sentence.split() if word in word2vec_model.wv] or [np.zeros(100)], axis=0) for
+sentence in X_test])
+# Initialize individual classifiers
+svm_clf = SVC(kernel='linear', probability=True)
+nb_clf = MultinomialNB()
+ann_clf = MLPClassifier(hidden_layer_sizes=(100,), max_iter=500)
+# Initialize stacking classifier with the individual classifiers
+estimators = [('svm', svm_clf), ('naive_bayes', nb_clf), ('ann', ann_clf)]
+stacking_clf = StackingClassifier(estimators=estimators, final_estimator=SVC())
+# Combine TF-IDF and Word2Vec features
+X_train_combined = np.concatenate((X_train_tfidf.toarray(), X_train_word2vec),
+axis=1)
+X_test_combined = np.concatenate((X_test_tfidf.toarray(), X_test_word2vec),
+axis=1)
+# Train the stacking classifier
+stacking_clf.fit(X_train_combined, y_train)
+# Make predictions
+y_pred = stacking_clf.predict(X_test_combined)
+# Evaluate performance
+accuracy = accuracy_score(y_test, y_pred)
+precision = precision_score(y_test, y_pred, average='weighted')
+f1 = f1_score(y_test, y_pred, average='weighted')
